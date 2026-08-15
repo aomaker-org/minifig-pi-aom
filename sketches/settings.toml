@@ -10,4 +10,7 @@ LED_BRIGHTNESS = 0.2
 # DEMO_DURATION: time in seconds to run each mode during Demo Mode (default is 30.0)
 DEMO_DURATION = 30.0
 
+# FAST_DEMO_DURATION: time in seconds to run each mode during Fast Demo Mode (default is 5.0)
+FAST_DEMO_DURATION = 5.0
+
 # End of file: sketches/settings.toml
