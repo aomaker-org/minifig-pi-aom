@@ -1,0 +1,3 @@
+Adafruit CircuitPython 8.1.0-beta.1 on 2023-03-30; Fig Pi with rp2040
+Board ID:bwshockley_figpi
+UID:E662086543252A2A

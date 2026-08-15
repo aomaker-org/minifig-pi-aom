@@ -1,0 +1,94 @@
+# ==============================================================================
+# Path:        config_env
+# Purpose:     Idempotent WSL2/Ubuntu environment loader for Minifig WSL
+# Target OS:   Ubuntu 24.04 / 26.04 LTS (WSL2 / Linux Native)
+# Type:        Source-Only Script (DO NOT EXECUTE. Run via 'source config_env')
+# Lineage:     Minifig WSL Infrastructure
+# Updated:     2026-08-14
+# ==============================================================================
+
+# 1. Guard: Strictly prevent direct subshell execution
+if [ "${BASH_SOURCE[0]}" -ef "${0}" ] 2>/dev/null || [ "${BASH_SOURCE[0]}" == "${0}" ]; then
+    echo "[!] ERROR: 'config_env' is a source-only script and cannot be executed directly." >&2
+    echo "    To modify your shell environment, load it using:" >&2
+    echo "        source config_env [force|unset|<prompt_tag>]" >&2
+    echo "    or: . config_env [force|unset|<prompt_tag>]" >&2
+    return 1 2>/dev/null || exit 1
+fi
+
+# 2. Intercept and Parse Input Parameters
+LOCAL_TAG=""
+if [ "${1:-}" == "force" ] || [ "${1:-}" == "--force" ]; then
+    echo "[!] Force reload detected. Cycling environment state..."
+    unset MINIFIG_READY
+    LOCAL_TAG="${2:-}"
+elif [ "${1:-}" == "unset" ]; then
+    echo "[!] Unsetting Minifig WSL environment..."
+    unset MINIFIG_READY
+    unset MINIFIG_ROOT
+    unset MINIFIG_RUN_TYPE
+    
+    # Remove custom functions and aliases
+    unset -f pto pti 2>/dev/null
+    unalias files2clip clip2files pack2clip patch_incoming 2>/dev/null
+    
+    if command -v deactivate >/dev/null 2>&1; then
+        deactivate 2>/dev/null || true
+        echo "[+] Virtual environment deactivated."
+    fi
+    echo "[+] Minifig WSL environment unset."
+    return 0
+elif [ -n "${1:-}" ]; then
+    LOCAL_TAG="$1"
+fi
+
+# 3. Process Runtime Tag Assertions
+if [ -n "${LOCAL_TAG}" ]; then
+    export MINIFIG_RUN_TYPE="${LOCAL_TAG}"
+    echo "[+] Prompt run-type tag locked to: [${MINIFIG_RUN_TYPE}]"
+elif [ -z "${MINIFIG_RUN_TYPE:-}" ]; then
+    echo "[i] Tip: To tag your prompt context, try: source config_env \"my_tag\""
+else
+    echo "[+] Retaining active prompt tag exception: [${MINIFIG_RUN_TYPE}]"
+fi
+
+# 4. Idempotency Check
+if [ -n "${MINIFIG_READY:-}" ]; then
+    echo "[!] Minifig WSL environment is already loaded. Use 'source config_env force' to re-verify."
+    return 0
+fi
+
+# 5. Export Workspace Root & Virtual Environment Setup
+export MINIFIG_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_PATH="${MINIFIG_ROOT}/.venv"
+
+if [ -f "${VENV_PATH}/bin/activate" ]; then
+    if [[ "${VIRTUAL_ENV:-}" != "" ]]; then
+        deactivate >/dev/null 2>&1 || unset VIRTUAL_ENV
+    fi
+    source "${VENV_PATH}/bin/activate"
+    echo "[+] Virtual environment activated (${VENV_PATH})."
+elif command -v uv >/dev/null 2>&1; then
+    echo "[*] Creating local virtual environment via uv..."
+    uv venv "${VENV_PATH}"
+    source "${VENV_PATH}/bin/activate"
+elif command -v python3 >/dev/null 2>&1; then
+    echo "[*] Creating local virtual environment via python3 venv..."
+    python3 -m venv "${VENV_PATH}"
+    source "${VENV_PATH}/bin/activate"
+fi
+
+# 6. Interactive Prompt Customization
+if [[ $- == *i* ]]; then
+    export PS1='\[\e]0;\u@\h: \w\a\]\n\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;36m\][minifig-wsl${MINIFIG_RUN_TYPE:+:$MINIFIG_RUN_TYPE}]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\] \[\033[01;33m\]\D{%y%m_%H%M}_\!\[\033[00m\]\n; '
+fi
+
+# 7. Aliases and Syntactic Sugar (dev-tools/ and tools/ separation)
+# (Create dev-tools structure if files are added later)
+if [ -d "${MINIFIG_ROOT}/dev-tools" ]; then
+    alias files2clip="python3 ${MINIFIG_ROOT}/dev-tools/files2clip"
+    alias clip2files="python3 ${MINIFIG_ROOT}/dev-tools/clip2files"
+fi
+
+export MINIFIG_READY=1
+echo "[+] Minifig WSL environment loaded successfully (Root: ${MINIFIG_ROOT})."

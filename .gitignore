@@ -1,0 +1,16 @@
+# file: .gitignore
+# Ignore files for the unified minifig-pi-aom repository
+
+# Virtual environment and python caches
+wsl/.venv/
+.venv/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# System specific files
+.DS_Store
+Thumbs.db
+
+# End of file: .gitignore

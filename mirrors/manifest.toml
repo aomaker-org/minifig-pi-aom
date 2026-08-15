@@ -1,0 +1,10 @@
+# file: mirrors/manifest.toml
+# Manifest mapping microcontroller UIDs to friendly mirror folders and settings
+
+[devices.E662086543252A2A]
+board_id = "bwshockley_figpi"
+friendly_name = "first-minifig-pi"
+mirror_path = "mirrors/first-minifig-pi"
+comment = "First Fig Pi board running CircuitPython 8.1.0-beta.1"
+
+# End of file: mirrors/manifest.toml
