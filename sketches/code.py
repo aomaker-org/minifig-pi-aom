@@ -20,11 +20,17 @@ def file_exists(filename):
     except OSError:
         return False
 
-# 1. Read Environment Configurations from settings.toml
-active_mode_setting = os.getenv("ACTIVE_MODE", "all").lower()
-brightness_setting = float(os.getenv("LED_BRIGHTNESS", 0.2))
-demo_duration_setting = float(os.getenv("DEMO_DURATION", 30.0))
-fast_demo_duration_setting = float(os.getenv("FAST_DEMO_DURATION", 5.0))
+# 1. Read Environment Configurations from settings.toml safely
+active_mode_setting = str(os.getenv("ACTIVE_MODE", "all")).lower()
+
+brightness_val = os.getenv("LED_BRIGHTNESS")
+brightness_setting = float(brightness_val) if brightness_val is not None else 0.2
+
+demo_duration_val = os.getenv("DEMO_DURATION")
+demo_duration_setting = float(demo_duration_val) if demo_duration_val is not None else 30.0
+
+fast_demo_duration_val = os.getenv("FAST_DEMO_DURATION")
+fast_demo_duration_setting = float(fast_demo_duration_val) if fast_demo_duration_val is not None else 5.0
 
 # Check for demo mode file triggers
 fast_demo_active = file_exists("fast_demo_mode_on")
@@ -38,14 +44,37 @@ print(f"[Config] LED_BRIGHTNESS: {brightness_setting}")
 print(f"[Config] DEMO_MODE: {demo_mode_active} (Normal: {normal_demo_active}, Fast: {fast_demo_active})")
 print(f"[Config] DEMO_DURATION: {demo_duration}s")
 
-# 2. Initialize Hardware
-led = digitalio.DigitalInOut(board.LED)
-led.direction = digitalio.Direction.OUTPUT
+# 2. Initialize Hardware Safely
+# Handle built-in LED
+led_pin = getattr(board, "LED", None)
+if led_pin is not None:
+    led = digitalio.DigitalInOut(led_pin)
+    led.direction = digitalio.Direction.OUTPUT
+    print("[HW] Built-in LED initialized")
+else:
+    led = None
+    print("[HW] Warning: board.LED not found")
 
-button = digitalio.DigitalInOut(board.BUTTON)
-button.switch_to_input(pull=digitalio.Pull.UP)
+# Handle user button
+button_pin = getattr(board, "BUTTON", None)
+if button_pin is not None:
+    button = digitalio.DigitalInOut(button_pin)
+    button.switch_to_input(pull=digitalio.Pull.UP)
+    print("[HW] User button initialized")
+else:
+    button = None
+    print("[HW] Warning: board.BUTTON not found")
 
-pixels = neopixel.NeoPixel(board.NEOPIXEL, 9, brightness=brightness_setting, auto_write=False)
+# Handle NeoPixels (Fallback to microcontroller pin GPIO13 if board.NEOPIXEL is missing)
+neopixel_pin = getattr(board, "NEOPIXEL", None)
+if neopixel_pin is None:
+    # Fig Pi NeoPixel matrix is physically wired to GP13 (GPIO13)
+    neopixel_pin = microcontroller.pin.GPIO13
+    print("[HW] board.NEOPIXEL not found. Falling back to GPIO13")
+else:
+    print("[HW] board.NEOPIXEL found")
+
+pixels = neopixel.NeoPixel(neopixel_pin, 9, brightness=brightness_setting, auto_write=False)
 
 # Custom color state for Web Control Mode
 custom_web_colors = [(0, 0, 0)] * 9
@@ -57,7 +86,7 @@ def render_web_control(step):
 
 # 3. Instantiate Sub-apps
 anim_app = Animations(pixels)
-diag_app = Diagnostics(pixels, led, button)
+diag_app = Diagnostics(pixels, led, button) if led and button else None
 
 # 4. Assemble Mode List based on settings.toml config
 active_modes = []
@@ -65,8 +94,8 @@ active_modes = []
 # Mode 0-2 (or more): animations
 if active_mode_setting in ["animations", "all"]:
     active_modes.extend(anim_app.modes)
-# Diagnostics modes
-if active_mode_setting in ["diagnostics", "all"]:
+# Diagnostics modes (only if hardware initialized successfully)
+if diag_app and active_mode_setting in ["diagnostics", "all"]:
     active_modes.extend(diag_app.modes)
 
 # Always append Web Control Mode as the last mode
@@ -95,7 +124,6 @@ while True:
             # GET_TEMP -> returns CPU temperature
             if line == "GET_TEMP":
                 temp = microcontroller.cpu.temperature
-                # Print directly to serial output
                 print(f"TEMP:{temp:.2f}")
                 
             # SET_MODE:<idx> -> switch to animation/diagnostic mode
@@ -109,13 +137,11 @@ while True:
                     
             # SET_COLOR:<index>:<r>,<g>,<b> -> set specific pixel color
             elif line.startswith("SET_COLOR:"):
-                # Format: SET_COLOR:pixel_index:r,g,b
                 _, p_idx_str, rgb_str = line.split(":")
                 p_idx = int(p_idx_str)
                 r, g, b = map(int, rgb_str.split(","))
                 if 0 <= p_idx < 9:
                     custom_web_colors[p_idx] = (r, g, b)
-                    # Automatically switch to Web Control Mode to display the custom color
                     web_idx = len(active_modes) - 1
                     if current_mode_idx != web_idx:
                         current_mode_idx = web_idx
@@ -127,46 +153,44 @@ while True:
                 print(f"MODES:{mode_names}")
                 
         except Exception as e:
-            # Silently catch malformed serial commands to prevent crashes
             pass
             
     # Check for automatic demo mode switch
     if demo_mode_active and (current_time - last_mode_switch_time >= demo_duration):
-        # Do not auto-cycle away from Web Control Mode if currently active
         if mode_name != "Web Control Mode":
             current_mode_idx = (current_mode_idx + 1) % (len(active_modes) - 1)
             last_mode_switch_time = current_time
             print(f"[*] Demo Mode Auto-Switch to: {active_modes[current_mode_idx][0]}")
-            # Blink built-in LED to confirm auto-switch
-            led.value = True
-            time.sleep(0.1)
-            led.value = False
+            if led:
+                led.value = True
+                time.sleep(0.1)
+                led.value = False
             step = 0
             continue
         
-    # Read button (Active Low)
-    button_pressed = not button.value
-    
-    # Switch mode on button press (falling edge detection)
-    if button_pressed and last_button_state:
-        current_mode_idx = (current_mode_idx + 1) % len(active_modes)
-        last_mode_switch_time = current_time # Reset timer on manual override
-        print(f"[*] Switching to Mode {current_mode_idx}: {active_modes[current_mode_idx][0]}")
+    # Read button if present (Active Low)
+    if button:
+        button_pressed = not button.value
         
-        # Blink built-in LED to confirm switch
-        for _ in range(3):
-            led.value = True
-            time.sleep(0.08)
-            led.value = False
-            time.sleep(0.08)
-        time.sleep(0.2) # debounce
-        step = 0 # reset animation steps
-        
-    last_button_state = not button_pressed
+        # Switch mode on button press (falling edge detection)
+        if button_pressed and last_button_state:
+            current_mode_idx = (current_mode_idx + 1) % len(active_modes)
+            last_mode_switch_time = current_time
+            print(f"[*] Switching to Mode {current_mode_idx}: {active_modes[current_mode_idx][0]}")
+            
+            if led:
+                for _ in range(3):
+                    led.value = True
+                    time.sleep(0.08)
+                    led.value = False
+                    time.sleep(0.08)
+            time.sleep(0.2) # debounce
+            step = 0
+            
+        last_button_state = not button_pressed
     
-    # Toggle built-in LED state every cycle as a heartbeat indicator (if not overridden by diagnostics)
-    heartbeat_rate = 40 if demo_mode_active else 20
-    if step % heartbeat_rate == 0 and "Test" not in mode_name:
+    # Toggle built-in LED state every cycle as a heartbeat indicator
+    if led and step % heartbeat_rate == 0 and "Test" not in mode_name:
         led.value = not led.value
         
     # Run the active animation step
