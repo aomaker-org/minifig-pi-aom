@@ -7,4 +7,7 @@ ACTIVE_MODE = "all"
 # LED_BRIGHTNESS: float between 0.0 and 1.0 (default is 0.2)
 LED_BRIGHTNESS = 0.2
 
+# DEMO_DURATION: time in seconds to run each mode during Demo Mode (default is 30.0)
+DEMO_DURATION = 30.0
+
 # End of file: sketches/settings.toml

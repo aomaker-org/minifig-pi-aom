@@ -9,12 +9,26 @@ from apps.diagnostics import Diagnostics
 
 print("--- Minifig Unified Dispatcher Booting ---")
 
+# Helper to check file existence in CircuitPython
+def file_exists(filename):
+    try:
+        os.stat(filename)
+        return True
+    except OSError:
+        return False
+
 # 1. Read Environment Configurations from settings.toml
 active_mode_setting = os.getenv("ACTIVE_MODE", "all").lower()
 brightness_setting = float(os.getenv("LED_BRIGHTNESS", 0.2))
+demo_duration_setting = float(os.getenv("DEMO_DURATION", 30.0))
+
+# Check for demo mode file trigger
+demo_mode_active = file_exists("demo_mode_on")
 
 print(f"[Config] ACTIVE_MODE: {active_mode_setting}")
 print(f"[Config] LED_BRIGHTNESS: {brightness_setting}")
+print(f"[Config] DEMO_MODE: {demo_mode_active} (File 'demo_mode_on' present)")
+print(f"[Config] DEMO_DURATION: {demo_duration_setting}s")
 
 # 2. Initialize Hardware
 led = digitalio.DigitalInOut(board.LED)
@@ -51,16 +65,31 @@ for idx, (name, _, _) in enumerate(active_modes):
 current_mode_idx = 0
 step = 0
 last_button_state = True
+last_mode_switch_time = time.monotonic()
 
 while True:
     mode_name, render_func, delay = active_modes[current_mode_idx]
+    current_time = time.monotonic()
     
+    # Check for automatic demo mode switch
+    if demo_mode_active and (current_time - last_mode_switch_time >= demo_duration_setting):
+        current_mode_idx = (current_mode_idx + 1) % len(active_modes)
+        last_mode_switch_time = current_time
+        print(f"[*] Demo Mode Auto-Switch to: {active_modes[current_mode_idx][0]}")
+        # Blink built-in LED to confirm auto-switch
+        led.value = True
+        time.sleep(0.1)
+        led.value = False
+        step = 0
+        continue
+        
     # Read button (Active Low)
     button_pressed = not button.value
     
     # Switch mode on button press (falling edge detection)
     if button_pressed and last_button_state:
         current_mode_idx = (current_mode_idx + 1) % len(active_modes)
+        last_mode_switch_time = current_time # Reset timer on manual override
         print(f"[*] Switching to Mode {current_mode_idx}: {mode_name}")
         
         # Blink built-in LED to confirm switch
@@ -74,6 +103,12 @@ while True:
         
     last_button_state = not button_pressed
     
+    # Toggle built-in LED state every cycle as a heartbeat indicator (if not overridden by diagnostics)
+    # Slow heartbeat in demo mode, faster in normal mode
+    heartbeat_rate = 40 if demo_mode_active else 20
+    if step % heartbeat_rate == 0 and "Test" not in mode_name:
+        led.value = not led.value
+        
     # Run the active animation step
     try:
         render_func(step)
