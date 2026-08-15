@@ -45,7 +45,6 @@ print(f"[Config] DEMO_MODE: {demo_mode_active} (Normal: {normal_demo_active}, Fa
 print(f"[Config] DEMO_DURATION: {demo_duration}s")
 
 # 2. Initialize Hardware Safely
-# Handle built-in LED
 led_pin = getattr(board, "LED", None)
 if led_pin is not None:
     led = digitalio.DigitalInOut(led_pin)
@@ -55,7 +54,6 @@ else:
     led = None
     print("[HW] Warning: board.LED not found")
 
-# Handle user button
 button_pin = getattr(board, "BUTTON", None)
 if button_pin is not None:
     button = digitalio.DigitalInOut(button_pin)
@@ -65,10 +63,8 @@ else:
     button = None
     print("[HW] Warning: board.BUTTON not found")
 
-# Handle NeoPixels (Fallback to microcontroller pin GPIO13 if board.NEOPIXEL is missing)
 neopixel_pin = getattr(board, "NEOPIXEL", None)
 if neopixel_pin is None:
-    # Fig Pi NeoPixel matrix is physically wired to GP13 (GPIO13)
     neopixel_pin = microcontroller.pin.GPIO13
     print("[HW] board.NEOPIXEL not found. Falling back to GPIO13")
 else:
@@ -88,26 +84,36 @@ def render_web_control(step):
 anim_app = Animations(pixels)
 diag_app = Diagnostics(pixels, led, button) if led and button else None
 
-# 4. Assemble Mode List based on settings.toml config
+# Helper function to dynamically rebuild loaded modes list
+def rebuild_active_modes():
+    global active_modes, current_mode_idx
+    active_modes = []
+    
+    # Animations
+    if active_mode_setting in ["animations", "all"]:
+        active_modes.extend(anim_app.modes)
+    # Diagnostics
+    if diag_app and active_mode_setting in ["diagnostics", "all"]:
+        active_modes.extend(diag_app.modes)
+        
+    # Always append Web Control Mode as the last mode
+    web_control_mode = ("Web Control Mode", render_web_control, 0.05)
+    active_modes.append(web_control_mode)
+    
+    # Ensure current mode index is valid
+    if current_mode_idx >= len(active_modes):
+        current_mode_idx = 0
+
+# Initial build
 active_modes = []
-
-# Mode 0-2 (or more): animations
-if active_mode_setting in ["animations", "all"]:
-    active_modes.extend(anim_app.modes)
-# Diagnostics modes (only if hardware initialized successfully)
-if diag_app and active_mode_setting in ["diagnostics", "all"]:
-    active_modes.extend(diag_app.modes)
-
-# Always append Web Control Mode as the last mode
-web_control_mode = ("Web Control Mode", render_web_control, 0.05)
-active_modes.append(web_control_mode)
+current_mode_idx = 0
+rebuild_active_modes()
 
 print(f"[+] Loaded {len(active_modes)} active modes:")
 for idx, (name, _, _) in enumerate(active_modes):
     print(f"  Mode {idx}: {name}")
 
 # Event Loop variables
-current_mode_idx = 0
 step = 0
 last_button_state = True
 last_mode_switch_time = time.monotonic()
@@ -116,7 +122,7 @@ while True:
     mode_name, render_func, delay = active_modes[current_mode_idx]
     current_time = time.monotonic()
     
-    # 5. Non-blocking Serial Input Check (WebSerial commands)
+    # 4. Non-blocking Serial Input Check (WebSerial commands)
     if supervisor.runtime.serial_bytes_available:
         try:
             line = sys.stdin.readline().strip()
@@ -152,15 +158,51 @@ while True:
                 mode_names = ",".join([m[0] for m in active_modes])
                 print(f"MODES:{mode_names}")
                 
+            # TOGGLE_DEMO:ON/OFF -> toggle auto loop cycling
+            elif line.startswith("TOGGLE_DEMO:"):
+                state = line.split(":", 1)[1]
+                demo_mode_active = (state == "ON")
+                last_mode_switch_time = current_time
+                print(f"DEMO_STATUS:{'ON' if demo_mode_active else 'OFF'}")
+                
+            # SET_DURATION:<val> -> change cycle interval
+            elif line.startswith("SET_DURATION:"):
+                val = float(line.split(":", 1)[1])
+                demo_duration = val
+                last_mode_switch_time = current_time
+                print(f"DEMO_DURATION_SET:{demo_duration}")
+                
+            # SET_ACTIVE_MODE:all/animations/diagnostics -> rebuild group
+            elif line.startswith("SET_ACTIVE_MODE:"):
+                mode_group = line.split(":", 1)[1].lower()
+                if mode_group in ["all", "animations", "diagnostics"]:
+                    active_mode_setting = mode_group
+                    rebuild_active_modes()
+                    print(f"ACTIVE_GROUP_SET:{active_mode_setting}")
+                    # Notify the web client to reload the button list
+                    mode_names = ",".join([m[0] for m in active_modes])
+                    print(f"MODES:{mode_names}")
+                    print(f"MODE_ACTIVE:{current_mode_idx}")
+                    
+            # GET_STATUS -> send current configurations
+            elif line == "GET_STATUS":
+                print(f"DEMO_STATUS:{'ON' if demo_mode_active else 'OFF'}")
+                print(f"DEMO_DURATION_SET:{demo_duration}")
+                print(f"ACTIVE_GROUP_SET:{active_mode_setting}")
+                print(f"MODE_ACTIVE:{current_mode_idx}")
+                
         except Exception as e:
             pass
             
     # Check for automatic demo mode switch
     if demo_mode_active and (current_time - last_mode_switch_time >= demo_duration):
         if mode_name != "Web Control Mode":
+            # Cycle through all loaded modes except the last one (Web Control Mode)
             current_mode_idx = (current_mode_idx + 1) % (len(active_modes) - 1)
             last_mode_switch_time = current_time
             print(f"[*] Demo Mode Auto-Switch to: {active_modes[current_mode_idx][0]}")
+            # Notify web client of switch
+            print(f"MODE_ACTIVE:{current_mode_idx}")
             if led:
                 led.value = True
                 time.sleep(0.1)
@@ -171,12 +213,11 @@ while True:
     # Read button if present (Active Low)
     if button:
         button_pressed = not button.value
-        
-        # Switch mode on button press (falling edge detection)
         if button_pressed and last_button_state:
             current_mode_idx = (current_mode_idx + 1) % len(active_modes)
             last_mode_switch_time = current_time
             print(f"[*] Switching to Mode {current_mode_idx}: {active_modes[current_mode_idx][0]}")
+            print(f"MODE_ACTIVE:{current_mode_idx}")
             
             if led:
                 for _ in range(3):

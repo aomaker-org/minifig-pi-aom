@@ -98,6 +98,35 @@
             transform: none;
         }
 
+        select, input[type="text"] {
+            background-color: #334155;
+            color: var(--text-color);
+            border: 1px solid #475569;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            width: 100%;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        select:focus, input[type="text"]:focus {
+            border-color: var(--accent-color);
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+
         .temp-display {
             font-size: 3rem;
             font-weight: 700;
@@ -208,6 +237,42 @@
             <button id="connect-btn">Connect Fig Pi</button>
         </div>
 
+        <!-- Loop & Demo Configurations Menu -->
+        <div class="card full-width">
+            <h2>Loop & Demo Configurations</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                <!-- Mode filter dropdown -->
+                <div class="form-group">
+                    <label for="mode-group-select">Active Mode Group</label>
+                    <select id="mode-group-select" disabled>
+                        <option value="all">All (Animations & Diagnostics)</option>
+                        <option value="animations">Animations Only</option>
+                        <option value="diagnostics">Diagnostics Only</option>
+                    </select>
+                </div>
+                
+                <!-- Demo cycle toggle -->
+                <div class="form-group">
+                    <label for="demo-cycle-select">Demo Auto-Cycle</label>
+                    <select id="demo-cycle-select" disabled>
+                        <option value="OFF">Disabled</option>
+                        <option value="ON">Enabled</option>
+                    </select>
+                </div>
+
+                <!-- Cycle interval duration -->
+                <div class="form-group">
+                    <label for="duration-select">Cycle Duration</label>
+                    <select id="duration-select" disabled>
+                        <option value="5">Fast Demo (5s)</option>
+                        <option value="10">Quick Demo (10s)</option>
+                        <option value="30">Standard (30s)</option>
+                        <option value="60">Slow (60s)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
         <!-- Temperature Card -->
         <div class="card">
             <h2>CPU Temperature</h2>
@@ -265,12 +330,18 @@
         const tempLabels = [];
         const tempDataset = [];
 
+        // DOM elements
         const connectBtn = document.getElementById('connect-btn');
         const statusDot = document.getElementById('status-dot');
         const statusText = document.getElementById('status-text');
         const tempVal = document.getElementById('temp-val');
         const tempValF = document.getElementById('temp-val-f');
         const modesContainer = document.getElementById('modes-container');
+
+        // Config Menu Elements
+        const modeGroupSelect = document.getElementById('mode-group-select');
+        const demoCycleSelect = document.getElementById('demo-cycle-select');
+        const durationSelect = document.getElementById('duration-select');
 
         // Check WebSerial support
         if (!("serial" in navigator)) {
@@ -308,7 +379,7 @@
                     scales: {
                         x: {
                             grid: { color: '#334155', drawBorder: false },
-                            ticks: { display: false } // Hide time stamps on x-axis for clean look
+                            ticks: { display: false }
                         },
                         y: {
                             grid: { color: '#334155', drawBorder: false },
@@ -349,9 +420,16 @@
                 connectBtn.textContent = "Disconnect Fig Pi";
                 connectBtn.classList.add('connected');
 
+                // Enable dropdowns
+                modeGroupSelect.disabled = false;
+                demoCycleSelect.disabled = false;
+                durationSelect.disabled = false;
+
                 keepReading = true;
                 readLoop();
 
+                // Fetch initial configurations and modes
+                await sendCommand("GET_STATUS");
                 await sendCommand("GET_MODES");
                 
                 tempPollInterval = setInterval(() => {
@@ -390,6 +468,11 @@
             tempValF.textContent = "--.- °F";
             modesContainer.innerHTML = '<div style="color: #94a3b8; padding: 12px 0;">Connect the board to retrieve active modes.</div>';
             
+            // Disable dropdowns
+            modeGroupSelect.disabled = true;
+            demoCycleSelect.disabled = true;
+            durationSelect.disabled = true;
+
             // Clear chart data
             tempLabels.length = 0;
             tempDataset.length = 0;
@@ -406,6 +489,19 @@
                 await writer.write(cmd + "\n");
             }
         }
+
+        // Configuration change listeners
+        modeGroupSelect.addEventListener('change', (e) => {
+            sendCommand("SET_ACTIVE_MODE:" + e.target.value);
+        });
+
+        demoCycleSelect.addEventListener('change', (e) => {
+            sendCommand("TOGGLE_DEMO:" + e.target.value);
+        });
+
+        durationSelect.addEventListener('change', (e) => {
+            sendCommand("SET_DURATION:" + e.target.value);
+        });
 
         // Reader Loop
         async function readLoop() {
@@ -466,6 +562,26 @@
             else if (line.indexOf("MODE_ACTIVE:") === 0) {
                 const activeIdx = parseInt(line.substring(12));
                 highlightActiveMode(activeIdx);
+            }
+
+            // Sync config controls with board live state
+            else if (line.indexOf("DEMO_STATUS:") === 0) {
+                const state = line.substring(12);
+                demoCycleSelect.value = state;
+            }
+
+            else if (line.indexOf("DEMO_DURATION_SET:") === 0) {
+                const duration = parseFloat(line.substring(18));
+                // Round to nearest options value or add custom if needed
+                const closestOption = [5, 10, 30, 60].reduce((prev, curr) => {
+                    return (Math.abs(curr - duration) < Math.abs(prev - duration) ? curr : prev);
+                });
+                durationSelect.value = closestOption.toString();
+            }
+
+            else if (line.indexOf("ACTIVE_GROUP_SET:") === 0) {
+                const group = line.substring(17).trim();
+                modeGroupSelect.value = group;
             }
         }
 
