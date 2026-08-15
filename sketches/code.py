@@ -190,6 +190,7 @@ while True:
         last_button_state = not button_pressed
     
     # Toggle built-in LED state every cycle as a heartbeat indicator
+    heartbeat_rate = 40 if demo_mode_active else 20
     if led and step % heartbeat_rate == 0 and "Test" not in mode_name:
         led.value = not led.value
         
