@@ -4,6 +4,9 @@ import time
 import digitalio
 import neopixel
 import os
+import sys
+import supervisor
+import microcontroller
 from apps.animations import Animations
 from apps.diagnostics import Diagnostics
 
@@ -44,6 +47,14 @@ button.switch_to_input(pull=digitalio.Pull.UP)
 
 pixels = neopixel.NeoPixel(board.NEOPIXEL, 9, brightness=brightness_setting, auto_write=False)
 
+# Custom color state for Web Control Mode
+custom_web_colors = [(0, 0, 0)] * 9
+
+def render_web_control(step):
+    for i in range(9):
+        pixels[i] = custom_web_colors[i]
+    pixels.show()
+
 # 3. Instantiate Sub-apps
 anim_app = Animations(pixels)
 diag_app = Diagnostics(pixels, led, button)
@@ -51,16 +62,16 @@ diag_app = Diagnostics(pixels, led, button)
 # 4. Assemble Mode List based on settings.toml config
 active_modes = []
 
+# Mode 0-2 (or more): animations
 if active_mode_setting in ["animations", "all"]:
     active_modes.extend(anim_app.modes)
+# Diagnostics modes
 if active_mode_setting in ["diagnostics", "all"]:
     active_modes.extend(diag_app.modes)
 
-# Fallback in case configuration is invalid
-if not active_modes:
-    print("[!] Warning: Invalid ACTIVE_MODE. Defaulting to all.")
-    active_modes.extend(anim_app.modes)
-    active_modes.extend(diag_app.modes)
+# Always append Web Control Mode as the last mode
+web_control_mode = ("Web Control Mode", render_web_control, 0.05)
+active_modes.append(web_control_mode)
 
 print(f"[+] Loaded {len(active_modes)} active modes:")
 for idx, (name, _, _) in enumerate(active_modes):
@@ -76,17 +87,62 @@ while True:
     mode_name, render_func, delay = active_modes[current_mode_idx]
     current_time = time.monotonic()
     
+    # 5. Non-blocking Serial Input Check (WebSerial commands)
+    if supervisor.runtime.serial_bytes_available:
+        try:
+            line = sys.stdin.readline().strip()
+            
+            # GET_TEMP -> returns CPU temperature
+            if line == "GET_TEMP":
+                temp = microcontroller.cpu.temperature
+                # Print directly to serial output
+                print(f"TEMP:{temp:.2f}")
+                
+            # SET_MODE:<idx> -> switch to animation/diagnostic mode
+            elif line.startswith("SET_MODE:"):
+                target_idx = int(line.split(":", 1)[1])
+                if 0 <= target_idx < len(active_modes):
+                    current_mode_idx = target_idx
+                    last_mode_switch_time = current_time
+                    step = 0
+                    print(f"MODE_ACTIVE:{current_mode_idx}")
+                    
+            # SET_COLOR:<index>:<r>,<g>,<b> -> set specific pixel color
+            elif line.startswith("SET_COLOR:"):
+                # Format: SET_COLOR:pixel_index:r,g,b
+                _, p_idx_str, rgb_str = line.split(":")
+                p_idx = int(p_idx_str)
+                r, g, b = map(int, rgb_str.split(","))
+                if 0 <= p_idx < 9:
+                    custom_web_colors[p_idx] = (r, g, b)
+                    # Automatically switch to Web Control Mode to display the custom color
+                    web_idx = len(active_modes) - 1
+                    if current_mode_idx != web_idx:
+                        current_mode_idx = web_idx
+                        print(f"MODE_ACTIVE:{web_idx}")
+                        
+            # GET_MODES -> returns list of loaded modes
+            elif line == "GET_MODES":
+                mode_names = ",".join([m[0] for m in active_modes])
+                print(f"MODES:{mode_names}")
+                
+        except Exception as e:
+            # Silently catch malformed serial commands to prevent crashes
+            pass
+            
     # Check for automatic demo mode switch
     if demo_mode_active and (current_time - last_mode_switch_time >= demo_duration):
-        current_mode_idx = (current_mode_idx + 1) % len(active_modes)
-        last_mode_switch_time = current_time
-        print(f"[*] Demo Mode Auto-Switch to: {active_modes[current_mode_idx][0]}")
-        # Blink built-in LED to confirm auto-switch
-        led.value = True
-        time.sleep(0.1)
-        led.value = False
-        step = 0
-        continue
+        # Do not auto-cycle away from Web Control Mode if currently active
+        if mode_name != "Web Control Mode":
+            current_mode_idx = (current_mode_idx + 1) % (len(active_modes) - 1)
+            last_mode_switch_time = current_time
+            print(f"[*] Demo Mode Auto-Switch to: {active_modes[current_mode_idx][0]}")
+            # Blink built-in LED to confirm auto-switch
+            led.value = True
+            time.sleep(0.1)
+            led.value = False
+            step = 0
+            continue
         
     # Read button (Active Low)
     button_pressed = not button.value
@@ -95,7 +151,7 @@ while True:
     if button_pressed and last_button_state:
         current_mode_idx = (current_mode_idx + 1) % len(active_modes)
         last_mode_switch_time = current_time # Reset timer on manual override
-        print(f"[*] Switching to Mode {current_mode_idx}: {mode_name}")
+        print(f"[*] Switching to Mode {current_mode_idx}: {active_modes[current_mode_idx][0]}")
         
         # Blink built-in LED to confirm switch
         for _ in range(3):
@@ -109,7 +165,6 @@ while True:
     last_button_state = not button_pressed
     
     # Toggle built-in LED state every cycle as a heartbeat indicator (if not overridden by diagnostics)
-    # Slow heartbeat in demo mode, faster in normal mode
     heartbeat_rate = 40 if demo_mode_active else 20
     if step % heartbeat_rate == 0 and "Test" not in mode_name:
         led.value = not led.value
