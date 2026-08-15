@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Minifig Pi Controller</title>
+    <!-- Include Chart.js from CDN for clean data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -100,11 +102,11 @@
             font-size: 3rem;
             font-weight: 700;
             text-align: center;
-            margin: 16px 0;
+            margin: 8px 0;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 8px;
+            gap: 4px;
         }
 
         .temp-sub {
@@ -184,6 +186,12 @@
         .status-dot.active {
             background-color: var(--success-color);
         }
+
+        .chart-container {
+            width: 100%;
+            height: 160px;
+            position: relative;
+        }
     </style>
 </head>
 <body>
@@ -207,7 +215,11 @@
                 <span id="temp-val">--.- °C</span>
                 <span id="temp-val-f" class="temp-sub">--.- °F</span>
             </div>
-            <div style="text-align: center; color: #94a3b8; font-size: 0.9rem;">
+            <!-- Line Graph -->
+            <div class="chart-container">
+                <canvas id="tempChart"></canvas>
+            </div>
+            <div style="text-align: center; color: #94a3b8; font-size: 0.9rem; margin-top: 4px;">
                 Automatically polled every 2 seconds
             </div>
         </div>
@@ -216,8 +228,6 @@
         <div class="card">
             <h2>3x3 NeoPixel Matrix</h2>
             <div class="matrix-grid">
-                <!-- 3x3 pixels -->
-                <!-- Index maps to CircuitPython array: top-left to bottom-right -->
                 <div class="pixel" id="pixel-0"><input type="color" class="color-picker-input" data-index="0"></div>
                 <div class="pixel" id="pixel-1"><input type="color" class="color-picker-input" data-index="1"></div>
                 <div class="pixel" id="pixel-2"><input type="color" class="color-picker-input" data-index="2"></div>
@@ -249,6 +259,12 @@
         let keepReading = true;
         let tempPollInterval;
 
+        // Charting Variables
+        let tempChart;
+        const maxDataPoints = 30;
+        const tempLabels = [];
+        const tempDataset = [];
+
         const connectBtn = document.getElementById('connect-btn');
         const statusDot = document.getElementById('status-dot');
         const statusText = document.getElementById('status-text');
@@ -263,19 +279,63 @@
             statusText.textContent = "Browser incompatible (Use Chrome/Edge)";
         }
 
+        // Initialize empty Chart
+        function initChart() {
+            const ctx = document.getElementById('tempChart').getContext('2d');
+            tempChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: tempLabels,
+                    datasets: [{
+                        label: 'CPU Temperature (°C)',
+                        data: tempDataset,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: '#3b82f6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: '#334155', drawBorder: false },
+                            ticks: { display: false } // Hide time stamps on x-axis for clean look
+                        },
+                        y: {
+                            grid: { color: '#334155', drawBorder: false },
+                            ticks: { 
+                                color: '#94a3b8', 
+                                font: { size: 10 },
+                                callback: function(value) { return value + '°C'; }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize Chart on page load
+        initChart();
+
         connectBtn.addEventListener('click', async () => {
             if (port) {
-                // Disconnect
                 disconnect();
                 return;
             }
 
             try {
-                // Request port
                 port = await navigator.serial.requestPort();
                 await port.open({ baudRate: 115200 });
 
-                // Set up streams
                 const textEncoder = new TextEncoderStream();
                 const writableStreamClosed = textEncoder.readable.pipeTo(port.writable);
                 writer = textEncoder.writable.getWriter();
@@ -284,17 +344,14 @@
                 const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
                 reader = textDecoder.readable.getReader();
 
-                // Update UI state
                 statusDot.classList.add('active');
                 statusText.textContent = "Connected";
                 connectBtn.textContent = "Disconnect Fig Pi";
                 connectBtn.classList.add('connected');
 
-                // Start reader loop
                 keepReading = true;
                 readLoop();
 
-                // Fetch available modes and start temp polling
                 await sendCommand("GET_MODES");
                 
                 tempPollInterval = setInterval(() => {
@@ -333,6 +390,13 @@
             tempValF.textContent = "--.- °F";
             modesContainer.innerHTML = '<div style="color: #94a3b8; padding: 12px 0;">Connect the board to retrieve active modes.</div>';
             
+            // Clear chart data
+            tempLabels.length = 0;
+            tempDataset.length = 0;
+            if (tempChart) {
+                tempChart.update();
+            }
+
             // Reset pixel colors in UI
             document.querySelectorAll('.pixel').forEach(p => p.style.backgroundColor = '#334155');
         }
@@ -354,7 +418,7 @@
                     }
                     buffer += value;
                     let lines = buffer.split("\n");
-                    buffer = lines.pop(); // keep partial line in buffer
+                    buffer = lines.pop();
 
                     for (let line of lines) {
                         processIncomingLine(line.trim());
@@ -370,16 +434,26 @@
             console.log("FROM BOARD:", line);
             
             // Handle Temperature response
-            if (line.startswith && line.startsWith("TEMP:")) {
-                const temp = parseFloat(line.split(":")[1]);
-                tempVal.textContent = temp.toFixed(1) + " °C";
-                tempValF.textContent = (temp * 9 / 5 + 32).toFixed(1) + " °F";
-            }
-            // Alternative string check for compatibility
-            else if (line.indexOf("TEMP:") === 0) {
+            if (line.indexOf("TEMP:") === 0) {
                 const temp = parseFloat(line.substring(5));
                 tempVal.textContent = temp.toFixed(1) + " °C";
                 tempValF.textContent = (temp * 9 / 5 + 32).toFixed(1) + " °F";
+                
+                // Update graph data
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                
+                tempLabels.push(timeStr);
+                tempDataset.push(temp);
+                
+                if (tempLabels.length > maxDataPoints) {
+                    tempLabels.shift();
+                    tempDataset.shift();
+                }
+                
+                if (tempChart) {
+                    tempChart.update();
+                }
             }
             
             // Handle Modes list response
