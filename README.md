@@ -5,9 +5,10 @@ This repository consolidates all environment setups, tools, and code mirrors for
 
 ## Repository Structure
 
-* **[`mirrors/`](file:///home/fekerr/src/minifig-pi-aom/mirrors/):** Device mirrors containing actual files currently active on the Minifig Pi, indexed by hardware ID in `mirrors/manifest.toml`.
-* **[`wsl/`](file:///home/fekerr/src/minifig-pi-aom/wsl/):** Ubuntu WSL2 specific environment setups, scripts, and utilities.
-* **[`win11/`](file:///home/fekerr/src/minifig-pi-aom/win11/):** Windows host-side settings and tools (e.g. PowerShell utilities in `win11/ps7/`).
+* **[`wsl/docs/fig_pi.md`](file:///home/fekerr/src/minifig-pi-aom/wsl/docs/fig_pi.md):** Hardware specifications, firmware details, and references for the Fig Pi (RP2040) board.
+* **[`wsl/docs/agy_utilities.md`](file:///home/fekerr/src/minifig-pi-aom/wsl/docs/agy_utilities.md):** Guide to the local host integration tools and sync script (`sync_minifig.py`).
+* **[`wsl/docs/backlog.md`](file:///home/fekerr/src/minifig-pi-aom/wsl/docs/backlog.md):** Future roadmap, experimental USB capabilities, and backup backlog items.
+* **[`AI.md`](file:///home/fekerr/src/minifig-pi-aom/AI.md):** Workspace rules and environment boundary configuration for AI assistants.
 
 ## Quick Start (WSL Side)
 
