@@ -184,12 +184,21 @@ while True:
                     print(f"MODES:{mode_names}")
                     print(f"MODE_ACTIVE:{current_mode_idx}")
                     
+            # SET_BRIGHTNESS:<val> -> change NeoPixel brightness
+            elif line.startswith("SET_BRIGHTNESS:"):
+                val = float(line.split(":", 1)[1])
+                brightness_setting = max(0.005, min(1.0, val))
+                pixels.brightness = brightness_setting
+                pixels.show()
+                print(f"BRIGHTNESS_SET:{brightness_setting}")
+
             # GET_STATUS -> send current configurations
             elif line == "GET_STATUS":
                 print(f"DEMO_STATUS:{'ON' if demo_mode_active else 'OFF'}")
                 print(f"DEMO_DURATION_SET:{demo_duration}")
                 print(f"ACTIVE_GROUP_SET:{active_mode_setting}")
                 print(f"MODE_ACTIVE:{current_mode_idx}")
+                print(f"BRIGHTNESS_SET:{brightness_setting}")
                 
         except Exception as e:
             pass

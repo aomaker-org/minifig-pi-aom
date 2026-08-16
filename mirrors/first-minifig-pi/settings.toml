@@ -4,9 +4,9 @@
 # ACTIVE_MODE: "diagnostics", "animations", or "all" (runs both animations and diagnostics)
 ACTIVE_MODE = "all"
 
-# LED_BRIGHTNESS: string representation of float between 0.0 and 1.0 (default is "0.2")
+# LED_BRIGHTNESS: string representation of float between 0.0 and 1.0 (default is "0.05")
 # Must be wrapped in quotes because CircuitPython's settings.toml parser does not support native floats.
-LED_BRIGHTNESS = "0.2"
+LED_BRIGHTNESS = "0.05"
 
 # DEMO_DURATION: time in seconds (integer) to run each mode during Demo Mode (default is 30)
 DEMO_DURATION = 30

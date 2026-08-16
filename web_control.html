@@ -270,6 +270,12 @@
                         <option value="60">Slow (60s)</option>
                     </select>
                 </div>
+
+                <!-- LED Brightness slider -->
+                <div class="form-group">
+                    <label for="brightness-slider">LED Brightness (<span id="brightness-label">0.050</span>)</label>
+                    <input type="range" id="brightness-slider" min="0.005" max="0.5" step="0.005" value="0.05" disabled style="margin: 10px 0; cursor: pointer;">
+                </div>
             </div>
         </div>
 
@@ -342,6 +348,8 @@
         const modeGroupSelect = document.getElementById('mode-group-select');
         const demoCycleSelect = document.getElementById('demo-cycle-select');
         const durationSelect = document.getElementById('duration-select');
+        const brightnessSlider = document.getElementById('brightness-slider');
+        const brightnessLabel = document.getElementById('brightness-label');
 
         // Check WebSerial support
         if (!("serial" in navigator)) {
@@ -424,6 +432,7 @@
                 modeGroupSelect.disabled = false;
                 demoCycleSelect.disabled = false;
                 durationSelect.disabled = false;
+                brightnessSlider.disabled = false;
 
                 keepReading = true;
                 readLoop();
@@ -472,6 +481,7 @@
             modeGroupSelect.disabled = true;
             demoCycleSelect.disabled = true;
             durationSelect.disabled = true;
+            brightnessSlider.disabled = true;
 
             // Clear chart data
             tempLabels.length = 0;
@@ -501,6 +511,12 @@
 
         durationSelect.addEventListener('change', (e) => {
             sendCommand("SET_DURATION:" + e.target.value);
+        });
+
+        brightnessSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            brightnessLabel.textContent = val.toFixed(3);
+            sendCommand("SET_BRIGHTNESS:" + val);
         });
 
         // Reader Loop
@@ -582,6 +598,12 @@
             else if (line.indexOf("ACTIVE_GROUP_SET:") === 0) {
                 const group = line.substring(17).trim();
                 modeGroupSelect.value = group;
+            }
+
+            else if (line.indexOf("BRIGHTNESS_SET:") === 0) {
+                const val = parseFloat(line.substring(15));
+                brightnessSlider.value = val;
+                brightnessLabel.textContent = val.toFixed(3);
             }
         }
 
