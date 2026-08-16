@@ -1,0 +1,657 @@
+<!-- file: web_control.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minifig Pi Controller</title>
+    <!-- Include Chart.js from CDN for clean data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-color: #f8fafc;
+            --accent-color: #3b82f6;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --border-radius: 12px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 24px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        h1, h2 {
+            margin: 0;
+            font-weight: 600;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            color: var(--accent-color);
+        }
+
+        h2 {
+            font-size: 1.2rem;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+        }
+
+        button {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        button.connected {
+            background-color: var(--success-color);
+        }
+
+        button:disabled {
+            background-color: #64748b;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        select, input[type="text"] {
+            background-color: #334155;
+            color: var(--text-color);
+            border: 1px solid #475569;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            width: 100%;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        select:focus, input[type="text"]:focus {
+            border-color: var(--accent-color);
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+
+        .temp-display {
+            font-size: 3rem;
+            font-weight: 700;
+            text-align: center;
+            margin: 8px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .temp-sub {
+            font-size: 1rem;
+            color: #94a3b8;
+            font-weight: 400;
+        }
+
+        .matrix-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 80px);
+            grid-template-rows: repeat(3, 80px);
+            gap: 12px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .pixel {
+            width: 80px;
+            height: 80px;
+            background-color: #334155;
+            border-radius: 50%;
+            border: 3px solid #475569;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .pixel:hover {
+            transform: scale(1.05);
+            border-color: var(--accent-color);
+        }
+
+        /* Color Picker Overlay */
+        .color-picker-input {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .modes-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .mode-btn {
+            background-color: #334155;
+            text-align: left;
+            padding: 10px 16px;
+        }
+
+        .mode-btn.active {
+            background-color: var(--accent-color);
+            border-left: 4px solid var(--success-color);
+        }
+
+        .status-bar {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: var(--danger-color);
+        }
+
+        .status-dot.active {
+            background-color: var(--success-color);
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 160px;
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header / Connect Card -->
+        <div class="card full-width">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h1>Minifig Pi Web Controller</h1>
+                <div class="status-bar">
+                    <div id="status-dot" class="status-dot"></div>
+                    <span id="status-text">Disconnected</span>
+                </div>
+            </div>
+            <button id="connect-btn">Connect Fig Pi</button>
+        </div>
+
+        <!-- Loop & Demo Configurations Menu -->
+        <div class="card full-width">
+            <h2>Loop & Demo Configurations</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                <!-- Mode filter dropdown -->
+                <div class="form-group">
+                    <label for="mode-group-select">Active Mode Group</label>
+                    <select id="mode-group-select" disabled>
+                        <option value="all">All (Animations & Diagnostics)</option>
+                        <option value="animations">Animations Only</option>
+                        <option value="diagnostics">Diagnostics Only</option>
+                    </select>
+                </div>
+                
+                <!-- Demo cycle toggle -->
+                <div class="form-group">
+                    <label for="demo-cycle-select">Demo Auto-Cycle</label>
+                    <select id="demo-cycle-select" disabled>
+                        <option value="OFF">Disabled</option>
+                        <option value="ON">Enabled</option>
+                    </select>
+                </div>
+
+                <!-- Cycle interval duration -->
+                <div class="form-group">
+                    <label for="duration-select">Cycle Duration</label>
+                    <select id="duration-select" disabled>
+                        <option value="5">Fast Demo (5s)</option>
+                        <option value="10">Quick Demo (10s)</option>
+                        <option value="30">Standard (30s)</option>
+                        <option value="60">Slow (60s)</option>
+                    </select>
+                </div>
+
+                <!-- LED Brightness slider -->
+                <div class="form-group">
+                    <label for="brightness-slider">LED Brightness (<span id="brightness-label">0.050</span>)</label>
+                    <input type="range" id="brightness-slider" min="0.005" max="0.5" step="0.005" value="0.05" disabled style="margin: 10px 0; cursor: pointer;">
+                </div>
+            </div>
+        </div>
+
+        <!-- Temperature Card -->
+        <div class="card">
+            <h2>CPU Temperature</h2>
+            <div class="temp-display">
+                <span id="temp-val">--.- °C</span>
+                <span id="temp-val-f" class="temp-sub">--.- °F</span>
+            </div>
+            <!-- Line Graph -->
+            <div class="chart-container">
+                <canvas id="tempChart"></canvas>
+            </div>
+            <div style="text-align: center; color: #94a3b8; font-size: 0.9rem; margin-top: 4px;">
+                Automatically polled every 2 seconds
+            </div>
+        </div>
+
+        <!-- NeoPixel Controller -->
+        <div class="card">
+            <h2>3x3 NeoPixel Matrix</h2>
+            <div class="matrix-grid">
+                <div class="pixel" id="pixel-0"><input type="color" class="color-picker-input" data-index="0"></div>
+                <div class="pixel" id="pixel-1"><input type="color" class="color-picker-input" data-index="1"></div>
+                <div class="pixel" id="pixel-2"><input type="color" class="color-picker-input" data-index="2"></div>
+                <div class="pixel" id="pixel-3"><input type="color" class="color-picker-input" data-index="3"></div>
+                <div class="pixel" id="pixel-4"><input type="color" class="color-picker-input" data-index="4"></div>
+                <div class="pixel" id="pixel-5"><input type="color" class="color-picker-input" data-index="5"></div>
+                <div class="pixel" id="pixel-6"><input type="color" class="color-picker-input" data-index="6"></div>
+                <div class="pixel" id="pixel-7"><input type="color" class="color-picker-input" data-index="7"></div>
+                <div class="pixel" id="pixel-8"><input type="color" class="color-picker-input" data-index="8"></div>
+            </div>
+            <div style="text-align: center; color: #94a3b8; font-size: 0.9rem;">
+                Click any pixel to set a custom color
+            </div>
+        </div>
+
+        <!-- Modes list -->
+        <div class="card full-width">
+            <h2>Animation & Diagnostic Modes</h2>
+            <div class="modes-list" id="modes-container">
+                <div style="color: #94a3b8; padding: 12px 0;">Connect the board to retrieve active modes.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let port;
+        let writer;
+        let reader;
+        let keepReading = true;
+        let tempPollInterval;
+
+        // Charting Variables
+        let tempChart;
+        const maxDataPoints = 30;
+        const tempLabels = [];
+        const tempDataset = [];
+
+        // DOM elements
+        const connectBtn = document.getElementById('connect-btn');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const tempVal = document.getElementById('temp-val');
+        const tempValF = document.getElementById('temp-val-f');
+        const modesContainer = document.getElementById('modes-container');
+
+        // Config Menu Elements
+        const modeGroupSelect = document.getElementById('mode-group-select');
+        const demoCycleSelect = document.getElementById('demo-cycle-select');
+        const durationSelect = document.getElementById('duration-select');
+        const brightnessSlider = document.getElementById('brightness-slider');
+        const brightnessLabel = document.getElementById('brightness-label');
+
+        // Check WebSerial support
+        if (!("serial" in navigator)) {
+            connectBtn.disabled = true;
+            connectBtn.textContent = "WebSerial not supported in this browser";
+            statusText.textContent = "Browser incompatible (Use Chrome/Edge)";
+        }
+
+        // Initialize empty Chart
+        function initChart() {
+            const ctx = document.getElementById('tempChart').getContext('2d');
+            tempChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: tempLabels,
+                    datasets: [{
+                        label: 'CPU Temperature (°C)',
+                        data: tempDataset,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: '#3b82f6'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: '#334155', drawBorder: false },
+                            ticks: { display: false }
+                        },
+                        y: {
+                            grid: { color: '#334155', drawBorder: false },
+                            ticks: { 
+                                color: '#94a3b8', 
+                                font: { size: 10 },
+                                callback: function(value) { return value + '°C'; }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize Chart on page load
+        initChart();
+
+        connectBtn.addEventListener('click', async () => {
+            if (port) {
+                disconnect();
+                return;
+            }
+
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+
+                const textEncoder = new TextEncoderStream();
+                const writableStreamClosed = textEncoder.readable.pipeTo(port.writable);
+                writer = textEncoder.writable.getWriter();
+
+                const textDecoder = new TextDecoderStream();
+                const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+                reader = textDecoder.readable.getReader();
+
+                statusDot.classList.add('active');
+                statusText.textContent = "Connected";
+                connectBtn.textContent = "Disconnect Fig Pi";
+                connectBtn.classList.add('connected');
+
+                // Enable dropdowns
+                modeGroupSelect.disabled = false;
+                demoCycleSelect.disabled = false;
+                durationSelect.disabled = false;
+                brightnessSlider.disabled = false;
+
+                keepReading = true;
+                readLoop();
+
+                // Fetch initial configurations and modes
+                await sendCommand("GET_STATUS");
+                await sendCommand("GET_MODES");
+                
+                tempPollInterval = setInterval(() => {
+                    sendCommand("GET_TEMP");
+                }, 2000);
+
+            } catch (err) {
+                console.error("Connection failed:", err);
+                alert("Failed to connect: " + err.message);
+            }
+        });
+
+        async function disconnect() {
+            clearInterval(tempPollInterval);
+            keepReading = false;
+            
+            if (reader) {
+                await reader.cancel();
+            }
+            if (writer) {
+                await writer.close();
+            }
+            if (port) {
+                await port.close();
+            }
+
+            port = null;
+            writer = null;
+            reader = null;
+
+            statusDot.classList.remove('active');
+            statusText.textContent = "Disconnected";
+            connectBtn.textContent = "Connect Fig Pi";
+            connectBtn.classList.remove('connected');
+            tempVal.textContent = "--.- °C";
+            tempValF.textContent = "--.- °F";
+            modesContainer.innerHTML = '<div style="color: #94a3b8; padding: 12px 0;">Connect the board to retrieve active modes.</div>';
+            
+            // Disable dropdowns
+            modeGroupSelect.disabled = true;
+            demoCycleSelect.disabled = true;
+            durationSelect.disabled = true;
+            brightnessSlider.disabled = true;
+
+            // Clear chart data
+            tempLabels.length = 0;
+            tempDataset.length = 0;
+            if (tempChart) {
+                tempChart.update();
+            }
+
+            // Reset pixel colors in UI
+            document.querySelectorAll('.pixel').forEach(p => p.style.backgroundColor = '#334155');
+        }
+
+        async function sendCommand(cmd) {
+            if (writer) {
+                await writer.write(cmd + "\n");
+            }
+        }
+
+        // Configuration change listeners
+        modeGroupSelect.addEventListener('change', (e) => {
+            sendCommand("SET_ACTIVE_MODE:" + e.target.value);
+        });
+
+        demoCycleSelect.addEventListener('change', (e) => {
+            sendCommand("TOGGLE_DEMO:" + e.target.value);
+        });
+
+        durationSelect.addEventListener('change', (e) => {
+            sendCommand("SET_DURATION:" + e.target.value);
+        });
+
+        brightnessSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            brightnessLabel.textContent = val.toFixed(3);
+            sendCommand("SET_BRIGHTNESS:" + val);
+        });
+
+        // Reader Loop
+        async function readLoop() {
+            let buffer = "";
+            try {
+                while (keepReading) {
+                    const { value, done } = await reader.read();
+                    if (done) {
+                        break;
+                    }
+                    buffer += value;
+                    let lines = buffer.split("\n");
+                    buffer = lines.pop();
+
+                    for (let line of lines) {
+                        processIncomingLine(line.trim());
+                    }
+                }
+            } catch (err) {
+                console.error("Read error:", err);
+                disconnect();
+            }
+        }
+
+        function processIncomingLine(line) {
+            console.log("FROM BOARD:", line);
+            
+            // Handle Temperature response
+            if (line.indexOf("TEMP:") === 0) {
+                const temp = parseFloat(line.substring(5));
+                tempVal.textContent = temp.toFixed(1) + " °C";
+                tempValF.textContent = (temp * 9 / 5 + 32).toFixed(1) + " °F";
+                
+                // Update graph data
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                
+                tempLabels.push(timeStr);
+                tempDataset.push(temp);
+                
+                if (tempLabels.length > maxDataPoints) {
+                    tempLabels.shift();
+                    tempDataset.shift();
+                }
+                
+                if (tempChart) {
+                    tempChart.update();
+                }
+            }
+            
+            // Handle Modes list response
+            else if (line.indexOf("MODES:") === 0) {
+                const names = line.substring(6).split(",");
+                buildModesUI(names);
+            }
+            
+            // Handle active mode report
+            else if (line.indexOf("MODE_ACTIVE:") === 0) {
+                const activeIdx = parseInt(line.substring(12));
+                highlightActiveMode(activeIdx);
+            }
+
+            // Sync config controls with board live state
+            else if (line.indexOf("DEMO_STATUS:") === 0) {
+                const state = line.substring(12);
+                demoCycleSelect.value = state;
+            }
+
+            else if (line.indexOf("DEMO_DURATION_SET:") === 0) {
+                const duration = parseFloat(line.substring(18));
+                // Round to nearest options value or add custom if needed
+                const closestOption = [5, 10, 30, 60].reduce((prev, curr) => {
+                    return (Math.abs(curr - duration) < Math.abs(prev - duration) ? curr : prev);
+                });
+                durationSelect.value = closestOption.toString();
+            }
+
+            else if (line.indexOf("ACTIVE_GROUP_SET:") === 0) {
+                const group = line.substring(17).trim();
+                modeGroupSelect.value = group;
+            }
+
+            else if (line.indexOf("BRIGHTNESS_SET:") === 0) {
+                const val = parseFloat(line.substring(15));
+                brightnessSlider.value = val;
+                brightnessLabel.textContent = val.toFixed(3);
+            }
+        }
+
+        function buildModesUI(names) {
+            modesContainer.innerHTML = "";
+            names.forEach((name, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'mode-btn';
+                btn.id = `mode-btn-${idx}`;
+                btn.textContent = `${idx}: ${name}`;
+                btn.addEventListener('click', () => {
+                    sendCommand(`SET_MODE:${idx}`);
+                });
+                modesContainer.appendChild(btn);
+            });
+        }
+
+        function highlightActiveMode(activeIdx) {
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            const activeBtn = document.getElementById(`mode-btn-${activeIdx}`);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+            }
+        }
+
+        // Color Picker Listeners
+        document.querySelectorAll('.color-picker-input').forEach(picker => {
+            picker.addEventListener('input', (e) => {
+                const idx = e.target.getAttribute('data-index');
+                const hexColor = e.target.value;
+                
+                // Convert hex to RGB
+                const r = parseInt(hexColor.slice(1, 3), 16);
+                const g = parseInt(hexColor.slice(3, 5), 16);
+                const b = parseInt(hexColor.slice(5, 7), 16);
+                
+                // Update local UI color preview
+                const pixelDiv = document.getElementById(`pixel-${idx}`);
+                pixelDiv.style.backgroundColor = hexColor;
+                pixelDiv.style.borderColor = hexColor;
+
+                // Transmit command to board
+                sendCommand(`SET_COLOR:${idx}:${r},${g},${b}`);
+            });
+        });
+    </script>
+</body>
+</html>
+<!-- End of file: web_control.html -->

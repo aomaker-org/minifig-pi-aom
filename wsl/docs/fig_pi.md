@@ -18,7 +18,7 @@ The **Fig Pi** is a LEGO® minifigure-shaped development board based on the Rasp
   * STEMMA QT / QWIIC 4-pin JST SH connector (I2C)
 
 ## Firmware & Software
-* **Default Runtime:** Ships preloaded with **Adafruit CircuitPython** (currently `8.1.0-beta.1` on this device).
+* **Default Runtime:** Ships preloaded with **Adafruit CircuitPython** (currently `8.1.0-beta.1` on this device). See [`firmware_updates.md`](file:///home/fekerr/src/minifig-pi-aom/wsl/docs/firmware_updates.md) for board specs and upgrade guides.
 * **Upload Mechanism:** UF2 bootloader (exposes a USB mass storage drive for drag-and-drop code replacement).
 
 ## Official Resources

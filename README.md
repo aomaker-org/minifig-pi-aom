@@ -7,6 +7,7 @@ This repository consolidates all environment setups, tools, and code mirrors for
 
 * **[`wsl/docs/fig_pi.md`](file:///home/fekerr/src/minifig-pi-aom/wsl/docs/fig_pi.md):** Hardware specifications, firmware details, and references for the Fig Pi (RP2040) board.
 * **[`wsl/docs/agy_utilities.md`](file:///home/fekerr/src/minifig-pi-aom/wsl/docs/agy_utilities.md):** Guide to the local host integration tools and sync script (`sync_minifig.py`).
+* **[`wsl/docs/firmware_updates.md`](file:///home/fekerr/src/minifig-pi-aom/wsl/docs/firmware_updates.md):** Microcontroller specs, firmware version logs, and upgrade guide.
 * **[`wsl/docs/backlog.md`](file:///home/fekerr/src/minifig-pi-aom/wsl/docs/backlog.md):** Future roadmap, experimental USB capabilities, and backup backlog items.
 * **[`AI.md`](file:///home/fekerr/src/minifig-pi-aom/AI.md):** Workspace rules and environment boundary configuration for AI assistants.
 
