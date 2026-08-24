@@ -38,6 +38,8 @@ normal_demo_active = file_exists("demo_mode_on")
 
 demo_mode_active = fast_demo_active or normal_demo_active
 demo_duration = fast_demo_duration_setting if fast_demo_active else demo_duration_setting
+temp_limit_target = 0.0
+loop_suspended = False
 
 print(f"[Config] ACTIVE_MODE: {active_mode_setting}")
 print(f"[Config] LED_BRIGHTNESS: {brightness_setting}")
@@ -192,6 +194,23 @@ while True:
                 pixels.show()
                 print(f"BRIGHTNESS_SET:{brightness_setting}")
 
+            # SET_TEMP_LIMIT:<val> -> set CPU temperature limit target (0.0 to disable)
+            elif line.startswith("SET_TEMP_LIMIT:"):
+                val = float(line.split(":", 1)[1])
+                temp_limit_target = max(0.0, val)
+                print(f"TEMP_LIMIT_VAL_SET:{temp_limit_target:.1f}")
+
+            # SUSPEND_LOOP:ON/OFF -> suspend rendering to cool CPU
+            elif line.startswith("SUSPEND_LOOP:"):
+                state = line.split(":", 1)[1]
+                loop_suspended = (state == "ON")
+                if loop_suspended:
+                    pixels.fill((0, 0, 0))
+                    pixels.show()
+                    if led:
+                        led.value = False
+                print(f"LOOP_SUSPEND_STATUS:{'ON' if loop_suspended else 'OFF'}")
+
             # GET_STATUS -> send current configurations
             elif line == "GET_STATUS":
                 print(f"DEMO_STATUS:{'ON' if demo_mode_active else 'OFF'}")
@@ -199,10 +218,21 @@ while True:
                 print(f"ACTIVE_GROUP_SET:{active_mode_setting}")
                 print(f"MODE_ACTIVE:{current_mode_idx}")
                 print(f"BRIGHTNESS_SET:{brightness_setting}")
+                print(f"TEMP_LIMIT_VAL_SET:{temp_limit_target:.1f}")
+                print(f"LOOP_SUSPEND_STATUS:{'ON' if loop_suspended else 'OFF'}")
                 
         except Exception as e:
             pass
             
+    # Conserve CPU cycles and heat if loop is suspended
+    if loop_suspended:
+        pixels.fill((0, 0, 0))
+        pixels.show()
+        if led:
+            led.value = False
+        time.sleep(1.0)
+        continue
+
     # Check for automatic demo mode switch
     if demo_mode_active and (current_time - last_mode_switch_time >= demo_duration):
         if mode_name != "Web Control Mode":
@@ -251,6 +281,20 @@ while True:
         print(f"[!] Error rendering {mode_name}: {e}")
         time.sleep(1.0)
         
+    # Apply CPU temperature limiting sleeps if active
+    if temp_limit_target > 0.0:
+        # Check temperature every 10 steps to minimize overhead
+        if step % 10 == 0:
+            try:
+                curr_temp = microcontroller.cpu.temperature
+                if curr_temp > temp_limit_target:
+                    excess = curr_temp - temp_limit_target
+                    # Sleep duration scales proportionally to excess temperature (min 20ms, max 200ms)
+                    sleep_dur = min(0.2, 0.02 + (excess * 0.05))
+                    time.sleep(sleep_dur)
+            except Exception:
+                pass
+
     time.sleep(delay)
     step = (step + 1) % 10000
 # End of file: sketches/code.py
